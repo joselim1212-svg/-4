@@ -41,9 +41,8 @@ input[type=text],input[type=number],input[type=datetime-local]{width:100%;paddin
 .chips button.on{background:var(--acc);color:var(--accink);border-color:var(--acc)}
 .primary{width:100%;margin-top:18px;padding:14px;border-radius:14px;background:var(--acc);color:var(--accink);font-weight:700}
 .link{color:var(--sub);font-size:13px;text-decoration:underline}
-.tabs{display:flex;gap:6px;overflow-x:auto;margin:12px -14px 0;padding:0 14px 4px;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:none;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);font-size:14px;white-space:nowrap}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+.tabs button{padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:var(--card);font-size:13px;white-space:nowrap}
 .tabs button.on{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:600}
 .fhead{display:flex;justify-content:space-between;align-items:center;margin:14px 0 0}
 .fhead button{background:var(--acc);color:var(--accink);border-radius:99px;padding:7px 14px;font-weight:600;font-size:14px}
@@ -96,7 +95,7 @@ const TYPES={
  temp:{e:'🌡️',n:'체온',f:[{k:'c',l:'체온 (℃)',t:'number',u:'℃',d:36.8,step:'0.1'}]},
  med:{e:'💊',n:'투약',f:[{k:'name',l:'약/영양제',o:['비타민D','유산균','해열제','기타'],d:'비타민D'}]},
  bath:{e:'🛁',n:'목욕',f:[]},
- weight:{e:'⚖️',n:'체중',f:[{k:'g',l:'체중 (g)',t:'number',u:'g'}]},
+ weight:{e:'⚖️',n:'체중',f:[{k:'kg',l:'체중 (kg)',t:'number',u:'kg',step:'0.01',d:3.2}]},
  burp:{e:'😮‍💨',n:'트림/토',f:[{k:'kind',l:'종류',o:['트림','토함','분수토'],d:'트림'}]},
  memo:{e:'📝',n:'메모',f:[{k:'text',l:'내용',t:'text'}]}
 };
@@ -155,6 +154,7 @@ function setSync(m){
 }
 function detail(l){
   const T=TYPES[l.type];if(!T)return'';
+  if(l.type==='weight'&&l.data?.g&&!l.data?.kg)return (l.data.g/1000)+'kg';
   return T.f.map(f=>{const v=l.data?.[f.k];return v===undefined||v===''?null:(f.u?`${v}${f.u}`:v)}).filter(Boolean).join(' · ');
 }
 function render(){
@@ -180,7 +180,7 @@ function render(){
   $('#list').innerHTML=h+(shown.length?'':'<p class="sub" style="text-align:center;margin-top:30px">아직 기록이 없어요 👶</p>');
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;filter=b.dataset.f;render();$('#tabs .on')?.scrollIntoView({inline:'center',block:'nearest'})};
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;filter=b.dataset.f;render()};
 $('#list').onclick=async e=>{const a=e.target.closest('[data-add]');if(a)return openForm(a.dataset.add);const b=e.target.closest('.x');if(b&&confirm('이 기록을 삭제할까요?'))await deleteDoc(doc(col,b.dataset.id))};
 
 function openForm(type){
