@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6efe9">
+<title>아기 기록</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍼</text></svg>">
+<style>
+:root{--bg:#f6efe9;--card:#fffaf5;--ink:#3b2f2a;--sub:#8a7a70;--line:#eadfd5;--acc:#e07a5f;--accink:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1816;--card:#262120;--ink:#f1e7df;--sub:#a1928a;--line:#383130;--acc:#e8896e;--accink:#1c1816}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:520px;margin:0 auto;padding:14px 14px 40px}
+h1{font-size:20px;margin:0}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.sub{color:var(--sub);font-size:13px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px}
+.sum b{display:block;font-size:20px;margin-top:2px}
+.sum .sub{display:block}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.quick button{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 0;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.quick button span{font-size:26px}
+.quick button:active{background:var(--line)}
+h2{font-size:14px;color:var(--sub);margin:18px 0 6px}
+.item{display:flex;gap:10px;align-items:center;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:6px}
+.item .e{font-size:24px}
+.item .t{font-variant-numeric:tabular-nums;font-weight:600;min-width:52px}
+.item .d{flex:1;min-width:0}
+.item .d small{display:block;color:var(--sub)}
+.item .x{color:var(--sub);font-size:18px;padding:4px 8px}
+.modal{position:fixed;inset:0;background:#0007;display:none;align-items:flex-end;justify-content:center;z-index:9}
+.modal.on{display:flex}
+.sheet{background:var(--bg);width:100%;max-width:520px;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90%;overflow:auto}
+label{display:block;font-size:13px;color:var(--sub);margin:12px 0 4px}
+input[type=text],input[type=number],input[type=datetime-local]{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card)}
+.chips button.on{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+.primary{width:100%;margin-top:18px;padding:14px;border-radius:14px;background:var(--acc);color:var(--accink);font-weight:700}
+.link{color:var(--sub);font-size:13px;text-decoration:underline}
+#setup{display:none}
+</style>
+</head>
+<body>
+<main>
+<section id="setup">
+  <h1 style="margin:40px 0 6px">🍼 아기 기록</h1>
+  <p class="sub">부부가 같은 가족 코드를 입력하면 실시간으로 공유돼요.</p>
+  <label>내 이름 (기록에 표시돼요)</label><input type="text" id="name" placeholder="예: 아빠">
+  <label>가족 코드</label><input type="text" id="code" placeholder="처음이면 비워두세요 (새로 만들어요)">
+  <button class="primary" id="start">시작하기</button>
+</section>
+
+<section id="app" style="display:none">
+  <header><div><h1 id="title">🍼 아기 기록</h1><div class="sub" id="who"></div></div><button class="link" id="share">코드 공유</button></header>
+  <div class="grid" id="sums"></div>
+  <div class="quick" id="quick"></div>
+  <div class="card sub" id="today"></div>
+  <div id="list"></div>
+</section>
+</main>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+
+<script type="module">
+/* ===== 1) Firebase 설정: 콘솔 > 프로젝트 설정 > 웹 앱에서 복사해 붙여넣기 ===== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDx-kfcztO0ezVVi3YT-QqYMlyfcq_2U1E",
+  authDomain: "baby-39924.firebaseapp.com",
+  projectId: "baby-39924",
+  storageBucket: "baby-39924.firebasestorage.app",
+  messagingSenderId: "782526065730",
+  appId: "1:782526065730:web:8e8642e5990c94ea4f11db"
+};
+/* ================================================================ */
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,signInAnonymously} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,addDoc,deleteDoc,doc,query,orderBy,limit,onSnapshot,Timestamp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const TYPES={
+ breast:{e:'🤱',n:'모유',f:[{k:'side',l:'방향',o:['왼쪽','오른쪽','양쪽'],d:'왼쪽'},{k:'min',l:'시간 (분)',t:'number',u:'분',d:15}]},
+ formula:{e:'🍼',n:'분유',f:[{k:'ml',l:'양 (ml)',t:'number',u:'ml',d:80},{k:'note',l:'탄 시간/메모',t:'text'}]},
+ pee:{e:'💧',n:'소변',f:[]},
+ poo:{e:'💩',n:'대변',f:[{k:'color',l:'색',o:['노랑','연두','갈색','녹색','검정','붉은기','흰색'],d:'노랑'},{k:'shape',l:'상태',o:['묽음','보통','단단'],d:'보통'}]},
+ sleep:{e:'😴',n:'수면',f:[{k:'min',l:'잔 시간 (분)',t:'number',u:'분',d:60}]},
+ temp:{e:'🌡️',n:'체온',f:[{k:'c',l:'체온 (℃)',t:'number',u:'℃',d:36.8,step:'0.1'}]},
+ med:{e:'💊',n:'투약',f:[{k:'name',l:'약/영양제',o:['비타민D','유산균','해열제','기타'],d:'비타민D'}]},
+ bath:{e:'🛁',n:'목욕',f:[]},
+ weight:{e:'⚖️',n:'체중',f:[{k:'g',l:'체중 (g)',t:'number',u:'g'}]},
+ burp:{e:'😮‍💨',n:'트림/토',f:[{k:'kind',l:'종류',o:['트림','토함','분수토'],d:'트림'}]},
+ memo:{e:'📝',n:'메모',f:[{k:'text',l:'내용',t:'text'}]}
+};
+const QUICK=['breast','formula','pee','poo','sleep','temp','med','bath'];
+const $=s=>document.querySelector(s);
+const pad=n=>String(n).padStart(2,'0');
+const loc=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const hm=d=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const dayKey=d=>`${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()}`;
+const ago=d=>{if(!d)return'기록 없음';const m=Math.max(0,Math.round((Date.now()-d)/60000));return m<60?`${m}분 전`:`${Math.floor(m/60)}시간 ${m%60}분 전`};
+const get=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const put=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+
+let user={name:get('name'),code:get('code')},logs=[],col;
+
+if(!user.code||!user.name){$('#setup').style.display='block';$('#name').value=user.name||'';$('#code').value=user.code||''}
+else boot();
+
+$('#start').onclick=()=>{
+  const n=$('#name').value.trim(),c=$('#code').value.trim().toLowerCase()||Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+  if(!n)return alert('이름을 입력해주세요');
+  user={name:n,code:c};put('name',n);put('code',c);$('#setup').style.display='none';boot();
+};
+$('#share').onclick=async()=>{
+  const msg=`아기 기록 가족 코드: ${user.code}\n${location.href}`;
+  if(navigator.share){try{await navigator.share({text:msg});return}catch(e){}}
+  try{await navigator.clipboard.writeText(user.code);alert('가족 코드가 복사됐어요:\n'+user.code)}catch(e){prompt('가족 코드',user.code)}
+};
+
+async function boot(){
+  $('#app').style.display='block';
+  $('#who').textContent=`${user.name} · 코드 ${user.code}`;
+  $('#quick').innerHTML=QUICK.map(k=>`<button data-k="${k}"><span>${TYPES[k].e}</span>${TYPES[k].n}</button>`).join('')+
+    `<button data-k="burp"><span>${TYPES.burp.e}</span>${TYPES.burp.n}</button><button data-k="weight"><span>${TYPES.weight.e}</span>${TYPES.weight.n}</button><button data-k="memo"><span>${TYPES.memo.e}</span>${TYPES.memo.n}</button>`;
+  $('#quick').onclick=e=>{const b=e.target.closest('button');if(b)openForm(b.dataset.k)};
+  if(firebaseConfig.apiKey==='YOUR_API_KEY'){$('#list').innerHTML='<div class="card">⚠️ index.html 상단의 firebaseConfig를 본인 Firebase 값으로 바꿔주세요.</div>';return}
+  const app=initializeApp(firebaseConfig);
+  try{await signInAnonymously(getAuth(app))}catch(e){console.warn('익명 로그인 건너뜀',e.code)}
+  const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
+  col=collection(db,'families',user.code,'logs');
+  onSnapshot(query(col,orderBy('time','desc'),limit(400)),s=>{logs=s.docs.map(d=>({id:d.id,...d.data(),time:d.data().time.toDate()}));render()},e=>{$('#list').innerHTML=`<div class="card">연결 오류: ${e.message}</div>`});
+  setInterval(render,30000);
+}
+
+function detail(l){
+  const T=TYPES[l.type];if(!T)return'';
+  return T.f.map(f=>{const v=l.data?.[f.k];return v===undefined||v===''?null:(f.u?`${v}${f.u}`:v)}).filter(Boolean).join(' · ');
+}
+function render(){
+  const last=t=>logs.find(l=>l.type===t)?.time;
+  const lf=[last('breast'),last('formula')].filter(Boolean).sort((a,b)=>b-a)[0];
+  const S=[['🍼 마지막 수유',lf],['💧 마지막 소변',last('pee')],['💩 마지막 대변',last('poo')],['😴 마지막 수면',last('sleep')]];
+  $('#sums').innerHTML=S.map(([n,d])=>`<div class="card sum"><span class="sub">${n}</span><b>${ago(d)}</b><span class="sub">${d?hm(d):'-'}</span></div>`).join('');
+  const td=logs.filter(l=>dayKey(l.time)===dayKey(new Date()));
+  const c=t=>td.filter(l=>l.type===t).length;
+  const ml=td.filter(l=>l.type==='formula').reduce((a,l)=>a+(+l.data?.ml||0),0);
+  const sl=td.filter(l=>l.type==='sleep').reduce((a,l)=>a+(+l.data?.min||0),0);
+  $('#today').innerHTML=`<b style="color:var(--ink)">오늘</b> · 모유 ${c('breast')}회 · 분유 ${c('formula')}회 (${ml}ml) · 소변 ${c('pee')} · 대변 ${c('poo')} · 수면 ${Math.floor(sl/60)}시간 ${sl%60}분`;
+  let h='',cur='';
+  for(const l of logs){
+    const k=dayKey(l.time);if(k!==cur){cur=k;h+=`<h2>${k===dayKey(new Date())?'오늘':k}</h2>`}
+    const T=TYPES[l.type]||{e:'•',n:l.type};
+    h+=`<div class="item"><span class="e">${T.e}</span><span class="t">${hm(l.time)}</span><div class="d">${T.n}${detail(l)?' · '+esc(detail(l)):''}<small>${esc(l.by||'')}${l.memo?' · '+esc(l.memo):''}</small></div><button class="x" data-id="${l.id}">✕</button></div>`;
+  }
+  $('#list').innerHTML=h||'<p class="sub" style="text-align:center;margin-top:30px">위 버튼으로 첫 기록을 남겨보세요 👶</p>';
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('#list').onclick=async e=>{const b=e.target.closest('.x');if(b&&confirm('이 기록을 삭제할까요?'))await deleteDoc(doc(col,b.dataset.id))};
+
+function openForm(type){
+  if(!col)return alert('Firebase 설정을 먼저 완료해주세요');
+  const T=TYPES[type],vals={};
+  let h=`<h1>${T.e} ${T.n} 기록</h1><label>시간</label><input type="datetime-local" id="f_time" value="${loc(new Date())}">`;
+  T.f.forEach(f=>{
+    vals[f.k]=f.d??'';
+    h+=`<label>${f.l}</label>`;
+    if(f.o)h+=`<div class="chips" data-k="${f.k}">${f.o.map(o=>`<button type="button" class="${o===f.d?'on':''}">${o}</button>`).join('')}</div>`;
+    else h+=`<input type="${f.t==='number'?'number':'text'}" ${f.step?`step="${f.step}"`:''} inputmode="${f.t==='number'?'decimal':'text'}" data-k="${f.k}" value="${f.d??''}">`;
+  });
+  h+=`<label>메모 (선택)</label><input type="text" id="f_memo"><button class="primary" id="f_save">저장</button><button class="link" id="f_cancel" style="display:block;margin:14px auto 0">취소</button>`;
+  $('#sheet').innerHTML=h;$('#modal').classList.add('on');
+  $('#sheet').querySelectorAll('.chips').forEach(c=>c.onclick=e=>{const b=e.target.closest('button');if(!b)return;c.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');vals[c.dataset.k]=b.textContent});
+  $('#sheet').querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>vals[i.dataset.k]=i.type==='number'&&i.value!==''?+i.value:i.value);
+  $('#f_cancel').onclick=close;
+  $('#f_save').onclick=async()=>{
+    const t=new Date($('#f_time').value);if(isNaN(t))return alert('시간을 확인해주세요');
+    $('#f_save').disabled=true;
+    addDoc(col,{type,time:Timestamp.fromDate(t),data:vals,memo:$('#f_memo').value.trim(),by:user.name,created:Timestamp.now()});
+    close();
+  };
+}
+const close=()=>$('#modal').classList.remove('on');
+$('#modal').onclick=e=>{if(e.target.id==='modal')close()};
+</script>
+</body>
+</html>
