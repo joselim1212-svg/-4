@@ -41,6 +41,12 @@ input[type=text],input[type=number],input[type=datetime-local]{width:100%;paddin
 .chips button.on{background:var(--acc);color:var(--accink);border-color:var(--acc)}
 .primary{width:100%;margin-top:18px;padding:14px;border-radius:14px;background:var(--acc);color:var(--accink);font-weight:700}
 .link{color:var(--sub);font-size:13px;text-decoration:underline}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:12px -14px 0;padding:0 14px 4px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);font-size:14px;white-space:nowrap}
+.tabs button.on{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:600}
+.fhead{display:flex;justify-content:space-between;align-items:center;margin:14px 0 0}
+.fhead button{background:var(--acc);color:var(--accink);border-radius:99px;padding:7px 14px;font-weight:600;font-size:14px}
 #setup{display:none}
 </style>
 </head>
@@ -59,6 +65,7 @@ input[type=text],input[type=number],input[type=datetime-local]{width:100%;paddin
   <div class="grid" id="sums"></div>
   <div class="quick" id="quick"></div>
   <div class="card sub" id="today"></div>
+  <div class="tabs" id="tabs"></div>
   <div id="list"></div>
 </section>
 </main>
@@ -78,7 +85,7 @@ const firebaseConfig = {
 /* ================================================================ */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {getAuth,signInAnonymously} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,addDoc,deleteDoc,doc,query,orderBy,limit,onSnapshot,Timestamp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,getDocsFromServer,addDoc,deleteDoc,doc,query,orderBy,limit,onSnapshot,Timestamp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const TYPES={
  breast:{e:'🤱',n:'모유',f:[{k:'side',l:'방향',o:['왼쪽','오른쪽','양쪽'],d:'왼쪽'},{k:'min',l:'시간 (분)',t:'number',u:'분',d:15}]},
@@ -103,7 +110,7 @@ const ago=d=>{if(!d)return'기록 없음';const m=Math.max(0,Math.round((Date.no
 const get=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const put=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 
-let user={name:get('name'),code:get('code')},logs=[],col;
+let user={name:get('name'),code:get('code')},logs=[],col,filter='all';
 
 if(!user.code||!user.name){$('#setup').style.display='block';$('#name').value=user.name||'';$('#code').value=user.code||''}
 else boot();
@@ -128,12 +135,24 @@ async function boot(){
   if(firebaseConfig.apiKey==='YOUR_API_KEY'){$('#list').innerHTML='<div class="card">⚠️ index.html 상단의 firebaseConfig를 본인 Firebase 값으로 바꿔주세요.</div>';return}
   const app=initializeApp(firebaseConfig);
   try{await signInAnonymously(getAuth(app))}catch(e){console.warn('익명 로그인 건너뜀',e.code)}
-  const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
+  const db=initializeFirestore(app,{experimentalForceLongPolling:true,useFetchStreams:false,localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
   col=collection(db,'families',user.code,'logs');
-  onSnapshot(query(col,orderBy('time','desc'),limit(400)),s=>{logs=s.docs.map(d=>({id:d.id,...d.data(),time:d.data().time.toDate()}));render()},e=>{$('#list').innerHTML=`<div class="card">연결 오류: ${e.message}</div>`});
+  const q=query(col,orderBy('time','desc'),limit(1000));
+  const apply=s=>{logs=s.docs.map(d=>({id:d.id,...d.data(),time:d.data().time.toDate()}));render()};
+  onSnapshot(q,{includeMetadataChanges:true},s=>{setSync(s.metadata);apply(s)},e=>{$('#list').innerHTML=`<div class="card">연결 오류: ${e.message}</div>`});
+  // 실시간 연결이 끊겨도 서버에서 직접 다시 받아오는 보험
+  let busy=false;
+  const pull=async()=>{if(busy||document.hidden)return;busy=true;try{apply(await getDocsFromServer(q))}catch(e){}busy=false};
+  setInterval(pull,8000);
+  document.addEventListener('visibilitychange',pull);
+  window.addEventListener('focus',pull);
+  window.addEventListener('online',pull);
   setInterval(render,30000);
 }
 
+function setSync(m){
+  $('#who').textContent=`${user.name} · 코드 ${user.code} · `+(m.hasPendingWrites?'⏳ 서버 전송 중':m.fromCache?'📴 오프라인(서버 미연결)':'✅ 동기화됨');
+}
 function detail(l){
   const T=TYPES[l.type];if(!T)return'';
   return T.f.map(f=>{const v=l.data?.[f.k];return v===undefined||v===''?null:(f.u?`${v}${f.u}`:v)}).filter(Boolean).join(' · ');
@@ -148,16 +167,21 @@ function render(){
   const ml=td.filter(l=>l.type==='formula').reduce((a,l)=>a+(+l.data?.ml||0),0);
   const sl=td.filter(l=>l.type==='sleep').reduce((a,l)=>a+(+l.data?.min||0),0);
   $('#today').innerHTML=`<b style="color:var(--ink)">오늘</b> · 모유 ${c('breast')}회 · 분유 ${c('formula')}회 (${ml}ml) · 소변 ${c('pee')} · 대변 ${c('poo')} · 수면 ${Math.floor(sl/60)}시간 ${sl%60}분`;
+  const cnt=t=>logs.filter(l=>l.type===t).length;
+  $('#tabs').innerHTML=`<button data-f="all" class="${filter==='all'?'on':''}">전체</button>`+Object.keys(TYPES).map(k=>`<button data-f="${k}" class="${filter===k?'on':''}">${TYPES[k].e} ${TYPES[k].n}${cnt(k)?` ${cnt(k)}`:''}</button>`).join('');
+  const shown=filter==='all'?logs:logs.filter(l=>l.type===filter);
   let h='',cur='';
-  for(const l of logs){
+  if(filter!=='all')h+=`<div class="fhead"><b>${TYPES[filter].e} ${TYPES[filter].n} 기록 ${shown.length}건</b><button data-add="${filter}">＋ 기록하기</button></div>`;
+  for(const l of shown){
     const k=dayKey(l.time);if(k!==cur){cur=k;h+=`<h2>${k===dayKey(new Date())?'오늘':k}</h2>`}
     const T=TYPES[l.type]||{e:'•',n:l.type};
     h+=`<div class="item"><span class="e">${T.e}</span><span class="t">${hm(l.time)}</span><div class="d">${T.n}${detail(l)?' · '+esc(detail(l)):''}<small>${esc(l.by||'')}${l.memo?' · '+esc(l.memo):''}</small></div><button class="x" data-id="${l.id}">✕</button></div>`;
   }
-  $('#list').innerHTML=h||'<p class="sub" style="text-align:center;margin-top:30px">위 버튼으로 첫 기록을 남겨보세요 👶</p>';
+  $('#list').innerHTML=h+(shown.length?'':'<p class="sub" style="text-align:center;margin-top:30px">아직 기록이 없어요 👶</p>');
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-$('#list').onclick=async e=>{const b=e.target.closest('.x');if(b&&confirm('이 기록을 삭제할까요?'))await deleteDoc(doc(col,b.dataset.id))};
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;filter=b.dataset.f;render();$('#tabs .on')?.scrollIntoView({inline:'center',block:'nearest'})};
+$('#list').onclick=async e=>{const a=e.target.closest('[data-add]');if(a)return openForm(a.dataset.add);const b=e.target.closest('.x');if(b&&confirm('이 기록을 삭제할까요?'))await deleteDoc(doc(col,b.dataset.id))};
 
 function openForm(type){
   if(!col)return alert('Firebase 설정을 먼저 완료해주세요');
@@ -177,7 +201,7 @@ function openForm(type){
   $('#f_save').onclick=async()=>{
     const t=new Date($('#f_time').value);if(isNaN(t))return alert('시간을 확인해주세요');
     $('#f_save').disabled=true;
-    addDoc(col,{type,time:Timestamp.fromDate(t),data:vals,memo:$('#f_memo').value.trim(),by:user.name,created:Timestamp.now()});
+    addDoc(col,{type,time:Timestamp.fromDate(t),data:vals,memo:$('#f_memo').value.trim(),by:user.name,created:Timestamp.now()}).catch(e=>alert('저장 실패(서버에 안 올라갔어요): '+e.message));
     close();
   };
 }
